@@ -9,24 +9,24 @@ import mem "core:mem"
 
 NULL_TOKEN :: 0xFFFF
 
-Token :: struct {
+Pair :: struct {
   l, r: u16,
 }
 
 Tokenizer :: struct {
   tokens: [dynamic]u16,
-  table: [dynamic]Token,
+  table: [dynamic]Pair,
 }
 
-token_print :: proc(leafs: ^[dynamic]Token, tokenizer: ^Tokenizer, tok: Token) { 
+token_print :: proc(leafs: ^[dynamic]Pair, tokenizer: ^Tokenizer, tok: Pair) { 
   if tok.r == NULL_TOKEN {
     fmt.printf("%c", tok.l)
     return
   }
 
   clear(leafs)
-  token_get_leafs(leafs, tokenizer, tokenizer.table[tok.l])
-  token_get_leafs(leafs, tokenizer, tokenizer.table[tok.r])
+  pair_get_leafs(leafs, tokenizer, tokenizer.table[tok.l])
+  pair_get_leafs(leafs, tokenizer, tokenizer.table[tok.r])
   for leaf in leafs {
     fmt.printf("%c", leaf.l)
   }
@@ -42,7 +42,7 @@ tokenizer_generate_random_text :: proc(tokenizer: ^Tokenizer, length: int) {
   vars := make([dynamic]u16) 
   defer delete(vars)
 
-  leafs := make([dynamic]Token)
+  leafs := make([dynamic]Pair)
   defer delete(leafs)
 
   for iter := 0; iter < length; iter+=1 {
@@ -72,23 +72,23 @@ tokenizer_generate_random_text :: proc(tokenizer: ^Tokenizer, length: int) {
   } 
 }
 
-token_get_leafs :: proc(res: ^[dynamic]Token, tokenizer: ^Tokenizer, tok: Token) {
+pair_get_leafs :: proc(res: ^[dynamic]Pair, tokenizer: ^Tokenizer, tok: Pair) {
   if tok.r == NULL_TOKEN {
     append(res, tok)
     return
   } 
 
-  token_get_leafs(res, tokenizer, tokenizer.table[tok.l])
-  token_get_leafs(res, tokenizer, tokenizer.table[tok.r])
+  pair_get_leafs(res, tokenizer, tokenizer.table[tok.l])
+  pair_get_leafs(res, tokenizer, tokenizer.table[tok.r])
 }
 
 tokenizer_print_table :: proc(tokenizer: ^Tokenizer) {
-  leafs := make([dynamic]Token, 0, 5)
+  leafs := make([dynamic]Pair, 0, 5)
   defer delete(leafs)
   
   for token in tokenizer.table { 
     clear(&leafs)
-    token_get_leafs(&leafs, tokenizer, token)
+    pair_get_leafs(&leafs, tokenizer, token)
 
     for leaf in leafs {
       fmt.printf("%c", leaf.l)
@@ -101,14 +101,14 @@ tokenizer_print_table :: proc(tokenizer: ^Tokenizer) {
 tokenizer_from_string :: proc(str: string) -> Tokenizer {
   tokenizer := Tokenizer{
     make([dynamic]u16, 0, len(str)),
-    make([dynamic]Token, 0, 512),
+    make([dynamic]Pair, 0, 512),
   }
 
-  ht := make(map[Token]u16)
+  ht := make(map[Pair]u16)
   defer delete(ht)
 
   for char in str {
-    tok := Token{u16(char), NULL_TOKEN} 
+    tok := Pair{u16(char), NULL_TOKEN} 
     ind, ok := ht[tok]
     if !ok {
       append(&tokenizer.table, tok)
@@ -125,11 +125,11 @@ tokenizer_from_string :: proc(str: string) -> Tokenizer {
 tokenizer_to_file :: proc(tokenizer: ^Tokenizer, filename: string) {
   data := make([dynamic]byte)
   defer delete(data)
-  leafs := make([dynamic]Token)
+  leafs := make([dynamic]Pair)
 
   for tokPtr in tokenizer.tokens {
     clear(&leafs)
-    token_get_leafs(&leafs, tokenizer, tokenizer.table[tokPtr])
+    pair_get_leafs(&leafs, tokenizer, tokenizer.table[tokPtr])
     for leaf in leafs {
       append(&data, u8(leaf.l)) 
     }
@@ -139,19 +139,19 @@ tokenizer_to_file :: proc(tokenizer: ^Tokenizer, filename: string) {
 }
 
 tokenizer_from_file :: proc(filename: string) -> Tokenizer { 
-	file, file_ok := os.read_entire_file(filename, context.allocator)
-	ensure(file_ok)
+  file, file_ok := os.read_entire_file(filename, context.allocator)
+  ensure(file_ok)
 
   tokenizer := Tokenizer{
     make([dynamic]u16, 0, len(file)),
-    make([dynamic]Token, 0, 512),
+    make([dynamic]Pair, 0, 512),
   }
 
-  ht := make(map[Token]u16)
+  ht := make(map[Pair]u16)
   defer delete(ht)
 
   for bt in file {
-    tok := Token{u16(bt), NULL_TOKEN} 
+    tok := Pair{u16(bt), NULL_TOKEN} 
     ind, ok := ht[tok]
     if !ok {
       append(&tokenizer.table, tok)
@@ -171,13 +171,13 @@ tokenizer_free :: proc(tokenizer: Tokenizer) {
 }
 
 tokenizer_iter :: proc(tokenizer: ^Tokenizer) {
-  most_freq_pair := Token{}
+  most_freq_pair := Pair{}
   most_freq_cnt := u32(0)
-  ht := make(map[Token]u32)
+  ht := make(map[Pair]u32)
   defer delete(ht)
 
   for i := 0; i < len(tokenizer.tokens)-1; i+=1 {
-    pair := Token{tokenizer.tokens[i], tokenizer.tokens[i+1]}
+    pair := Pair{tokenizer.tokens[i], tokenizer.tokens[i+1]}
     _, ok := ht[pair] 
     if ok { 
       ht[pair] += 1
@@ -253,13 +253,13 @@ tokenizer_read_bpe :: proc(filename: string) -> Tokenizer {
 
   tokenizer := Tokenizer{
     make([dynamic]u16, 0, tokens_len),
-    make([dynamic]Token, 0, table_len),
+    make([dynamic]Pair, 0, table_len),
   }
 
   ofs := 8
   elsize := size_of(u16)
   for i := ofs; i < table_len * elsize * 2 + ofs; i+=(elsize*2) {
-    token := Token{
+    token := Pair{
       bytes_to_u16(file[i:i+elsize]),
       bytes_to_u16(file[i+elsize:i+elsize*2]),
     }
