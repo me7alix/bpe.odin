@@ -4,29 +4,31 @@ import "core:fmt"
 import "core:math/rand"
 import "core:time"
 import "core:os"
-import vmem "core:mem/virtual"
-import mem "core:mem"
 
 NULL_TOKEN :: 0xFFFF
 
+Token :: u16
+
 Pair :: struct {
-  l, r: u16,
+  l, r: Token,
 }
 
 Tokenizer :: struct {
-  tokens: [dynamic]u16,
+  tokens: [dynamic]Token,
   table: [dynamic]Pair,
 }
 
-token_print :: proc(leafs: ^[dynamic]Pair, tokenizer: ^Tokenizer, tok: Pair) { 
-  if tok.r == NULL_TOKEN {
-    fmt.printf("%c", tok.l)
+token_print :: proc(leafs: ^[dynamic]Pair, tokenizer: ^Tokenizer, tok: Token) {
+  pair := tokenizer.table[tok]
+
+  if pair.r == NULL_TOKEN {
+    fmt.printf("%c", pair.l)
     return
   }
 
   clear(leafs)
-  pair_get_leafs(leafs, tokenizer, tokenizer.table[tok.l])
-  pair_get_leafs(leafs, tokenizer, tokenizer.table[tok.r])
+  pair_get_leafs(leafs, tokenizer, tokenizer.table[pair.l])
+  pair_get_leafs(leafs, tokenizer, tokenizer.table[pair.r])
   for leaf in leafs {
     fmt.printf("%c", leaf.l)
   }
@@ -39,7 +41,7 @@ tokenizer_generate_random_text :: proc(tokenizer: ^Tokenizer, length: int) {
   table := tokenizer.table
   tok_ind := u16(rand.int_max(len(table)))
   skipPrint := false
-  vars := make([dynamic]u16) 
+  vars := make([dynamic]Token)
   defer delete(vars)
 
   leafs := make([dynamic]Pair)
@@ -51,7 +53,7 @@ tokenizer_generate_random_text :: proc(tokenizer: ^Tokenizer, length: int) {
     }
 
     if !skipPrint {
-      token_print(&leafs, tokenizer, table[tok_ind])
+      token_print(&leafs, tokenizer, tok_ind)
     }
 
     clear(&vars)
@@ -72,14 +74,14 @@ tokenizer_generate_random_text :: proc(tokenizer: ^Tokenizer, length: int) {
   } 
 }
 
-pair_get_leafs :: proc(res: ^[dynamic]Pair, tokenizer: ^Tokenizer, tok: Pair) {
-  if tok.r == NULL_TOKEN {
-    append(res, tok)
+pair_get_leafs :: proc(res: ^[dynamic]Pair, tokenizer: ^Tokenizer, pair: Pair) {
+  if pair.r == NULL_TOKEN {
+    append(res, pair)
     return
   } 
 
-  pair_get_leafs(res, tokenizer, tokenizer.table[tok.l])
-  pair_get_leafs(res, tokenizer, tokenizer.table[tok.r])
+  pair_get_leafs(res, tokenizer, tokenizer.table[pair.l])
+  pair_get_leafs(res, tokenizer, tokenizer.table[pair.r])
 }
 
 tokenizer_print_table :: proc(tokenizer: ^Tokenizer) {
@@ -100,7 +102,7 @@ tokenizer_print_table :: proc(tokenizer: ^Tokenizer) {
 
 tokenizer_from_string :: proc(str: string) -> Tokenizer {
   tokenizer := Tokenizer{
-    make([dynamic]u16, 0, len(str)),
+    make([dynamic]Token, 0, len(str)),
     make([dynamic]Pair, 0, 512),
   }
 
@@ -143,19 +145,19 @@ tokenizer_from_file :: proc(filename: string) -> Tokenizer {
   ensure(file_ok)
 
   tokenizer := Tokenizer{
-    make([dynamic]u16, 0, len(file)),
+    make([dynamic]Token, 0, len(file)),
     make([dynamic]Pair, 0, 512),
   }
 
-  ht := make(map[Pair]u16)
+  ht := make(map[Pair]Token)
   defer delete(ht)
 
   for bt in file {
-    tok := Pair{u16(bt), NULL_TOKEN} 
+    tok := Pair{Token(bt), NULL_TOKEN} 
     ind, ok := ht[tok]
     if !ok {
       append(&tokenizer.table, tok)
-      ht[tok] = u16(len(tokenizer.table) - 1)
+      ht[tok] = Token(len(tokenizer.table) - 1)
       append(&tokenizer.tokens, ht[tok])
     } else {
       append(&tokenizer.tokens, ind)
@@ -252,23 +254,23 @@ tokenizer_read_bpe :: proc(filename: string) -> Tokenizer {
   tokens_len := int(bytes_to_u32(file[4:8]))
 
   tokenizer := Tokenizer{
-    make([dynamic]u16, 0, tokens_len),
+    make([dynamic]Token, 0, tokens_len),
     make([dynamic]Pair, 0, table_len),
   }
 
   ofs := 8
-  elsize := size_of(u16)
-  for i := ofs; i < table_len * elsize * 2 + ofs; i+=(elsize*2) {
+  tkn_size := size_of(Token)
+  for i := ofs; i < table_len * tkn_size * 2 + ofs; i+=(tkn_size*2) {
     token := Pair{
-      bytes_to_u16(file[i:i+elsize]),
-      bytes_to_u16(file[i+elsize:i+elsize*2]),
+      bytes_to_u16(file[i:i+tkn_size]),
+      bytes_to_u16(file[i+tkn_size:i+tkn_size*2]),
     }
     append(&tokenizer.table, token) 
   }
 
-  ofs += table_len * elsize * 2
-  for i := ofs; i < tokens_len * elsize + ofs; i+=elsize {
-    append(&tokenizer.tokens, bytes_to_u16(file[i:i+elsize])) 
+  ofs += table_len * tkn_size * 2
+  for i := ofs; i < tokens_len * tkn_size + ofs; i+=tkn_size {
+    append(&tokenizer.tokens, bytes_to_u16(file[i:i+tkn_size])) 
   }
 
   return tokenizer
